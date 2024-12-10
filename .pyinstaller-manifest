@@ -1,0 +1,11 @@
+# 排除不需要的 DLL
+exclude dlls msvcr*.dll
+exclude dlls vcruntime*.dll
+exclude dlls api-ms-win-*.dll
+
+# 排除不需要的 PyQt5 模块
+exclude PyQt5.QtNetwork
+exclude PyQt5.QtQml
+exclude PyQt5.QtWebKit
+exclude PyQt5.QtWebKitWidgets
+exclude PyQt5.QtMultimedia 

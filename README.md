@@ -8,6 +8,7 @@
 - 支持拖放操作
 - 系统托盘集成
 - 窗口置顶切换
+- 使用后自动删除选项
 - 现代化界面设计
 - 支持 Docker 部署
 
@@ -18,9 +19,14 @@
 - **粘贴内容**: 两种方式
   - 拖放：直接将列表项拖到目标位置
   - 点击：点击列表项将内容复制到剪贴板，然后在目标位置使用 Ctrl+V
+- **使用后删除**: 
+  - 默认开启此选项
+  - 开启时，拖放或点击使用后会自动从列表中删除该项
+  - 可以通过顶部的复选框切换此功能
 
 ### 界面操作
 - **窗口置顶**: 点击📌图标切换窗口置顶状态
+- **使用后删除**: 顶部复选框控制是否在使用后自动删除项目
 - **隐藏窗口**: 按 ESC 键或点击关闭按钮
 - **清空历史**: 点击底部的"清空历史"按钮
 - **系统托盘**: 
@@ -36,6 +42,30 @@
 - Python 3.9+
 - PyQt5 5.15.9
 - Windows 10/11
+
+## 构建和打包
+
+### 安装打包工具
+```bash
+pip install pyinstaller
+```
+
+### 打包命令
+```bash
+# 直接使用 build.py 打包
+python build.py
+
+# 或者使用 PyInstaller 命令行
+pyinstaller src/main.py --name=ClipList --windowed --onefile --icon=icons/clipboard.png --add-data="icons/clipboard.png;icons" --clean --noconfirm
+```
+
+打包后的文件位于 `dist` 目录下：
+- Windows: `dist/ClipList.exe`
+
+### 注意事项
+- 确保 icons 目录下有 clipboard.png 文件
+- 打包前确保已安装所有依赖 `pip install -r requirements.txt`
+- 打包后的程序大小约为 30MB（经过优化）
 
 ## 依赖项
 
@@ -68,6 +98,7 @@ ClipList/
 
 ## 待办事项
 
+- [x] 添加使用后自动删除功能
 - [ ] 添加快捷键配置
 - [ ] 支持富文本格式
 - [ ] 添加搜索功能

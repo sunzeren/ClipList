@@ -1,9 +1,8 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
                            QListWidget, QLabel, QPushButton, QApplication,
-                           QSystemTrayIcon, QMenu, QAction, QStyleOptionViewItem)
+                           QSystemTrayIcon, QMenu, QAction, QCheckBox)
 from PyQt5.QtCore import Qt, QPoint, QMimeData, QTimer
-from PyQt5.QtGui import (QFont, QColor, QPalette, QIcon, QDrag, QPainter,
-                        QPixmap)
+from PyQt5.QtGui import QFont, QIcon, QDrag, QPainter, QPixmap
 import win32gui
 import win32api
 import win32con
@@ -12,6 +11,8 @@ from win32gui import GetForegroundWindow, GetWindowText
 import win32clipboard
 from ctypes import windll
 import keyboard
+import os
+import sys
 
 class ClipboardManager(QWidget):
     def __init__(self):
@@ -28,9 +29,10 @@ class ClipboardManager(QWidget):
         self.setAttribute(Qt.WA_ShowWithoutActivating)  # 显示时不激活
         
         self.always_on_top = True
+        self.clip_history = []
+        self.list_widget = None  # 初始化为 None
         self.init_ui()
         self.setup_clipboard()
-        self.clip_history = []
         
         # 用于窗口拖动
         self.dragging = False
@@ -65,6 +67,11 @@ class ClipboardManager(QWidget):
         title.setObjectName('titleLabel')
         title.setFont(QFont('Arial', 12, QFont.Bold))
         
+        # 添加"使用后删除"复选框
+        self.auto_delete = QCheckBox('使用后删除')
+        self.auto_delete.setObjectName('autoDeleteCheckBox')
+        self.auto_delete.setChecked(True)  # 默认选中
+        
         # 置顶按钮
         pin_btn = QPushButton('📌')  # 使用 Unicode 图标
         pin_btn.setObjectName('pinButton')
@@ -81,6 +88,7 @@ class ClipboardManager(QWidget):
         
         title_layout.addWidget(title)
         title_layout.addStretch()
+        title_layout.addWidget(self.auto_delete)  # 添加到标题栏
         title_layout.addWidget(pin_btn)
         title_layout.addWidget(close_btn)
         
@@ -89,8 +97,8 @@ class ClipboardManager(QWidget):
         self.list_widget.setObjectName('clipList')
         self.list_widget.itemEntered.connect(self.on_item_hover)
         self.list_widget.setMouseTracking(True)
-        self.list_widget.setDragEnabled(True)  # 启用拖拽
-        self.list_widget.setDragDropMode(QListWidget.DragOnly)  # 只允许拖出
+        self.list_widget.setDragEnabled(True)
+        self.list_widget.setDragDropMode(QListWidget.DragOnly)
         
         # 自定义拖拽的开始
         self.list_widget.mousePressEvent = self.list_mousePressEvent
@@ -186,6 +194,30 @@ class ClipboardManager(QWidget):
                 border-bottom-left-radius: 10px;
                 border-bottom-right-radius: 10px;
             }
+            #autoDeleteCheckBox {
+                color: #ecf0f1;
+                spacing: 5px;
+            }
+            
+            #autoDeleteCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border-radius: 3px;
+                border: 1px solid #7f8c8d;
+            }
+            
+            #autoDeleteCheckBox::indicator:unchecked {
+                background-color: transparent;
+            }
+            
+            #autoDeleteCheckBox::indicator:checked {
+                background-color: #3498db;
+                border: 1px solid #2980b9;
+            }
+            
+            #autoDeleteCheckBox::indicator:hover {
+                border: 1px solid #3498db;
+            }
         ''')
 
     def setup_clipboard(self):
@@ -201,7 +233,8 @@ class ClipboardManager(QWidget):
 
     def on_clipboard_change(self):
         text = self.clipboard.text().strip()
-        if text and text not in self.clip_history:
+        # 只有当文本不在历史记录中，且不是我们自己触发的复制操作时才添加
+        if text and text not in self.clip_history and not hasattr(self, '_internal_copy'):
             self.clip_history.append(text)
             self.list_widget.insertItem(0, text)
 
@@ -211,22 +244,32 @@ class ClipboardManager(QWidget):
 
     def on_item_paste(self, item):
         try:
-            # 只更新剪贴板内容
-            self.clipboard.setText(item.text())
-            print(f"Content copied to clipboard: {item.text()}")
+            text = item.text()
+            row = self.list_widget.row(item)
             
-            # 可以添加一个临时的状态提示
-            current_text = item.text()
-            item.setText("✓ 已复制")
-            QApplication.processEvents()
+            # 标记这是内部复制操作
+            self._internal_copy = True
+            self.clipboard.setText(text)
+            # 删除标记
+            delattr(self, '_internal_copy')
             
-            # 0.5秒后恢复原文本
-            def restore_text():
-                item.setText(current_text)
-            QTimer.singleShot(500, restore_text)
+            print(f"Content copied to clipboard: {text}")
+            
+            if self.auto_delete.isChecked():
+                removed_item = self.list_widget.takeItem(row)
+                if removed_item:
+                    if text in self.clip_history:
+                        self.clip_history.remove(text)
+                    del removed_item
+            else:
+                item.setText("✓ 已复制")
+                QApplication.processEvents()
+                QTimer.singleShot(500, lambda: item.setText(text))
             
         except Exception as e:
             print(f"Error while copying: {str(e)}")
+            if hasattr(self, '_internal_copy'):
+                delattr(self, '_internal_copy')
 
     def clear_history(self):
         self.list_widget.clear()
@@ -255,11 +298,15 @@ class ClipboardManager(QWidget):
         # 创建系统托盘图标
         self.tray_icon = QSystemTrayIcon(self)
         
-        # 创建一个默认图标
+        # 修改图标加载逻辑
         icon = QIcon()
-        icon.addFile(':/icons/clipboard.png')  # 首先尝试使用资源文件
-        if icon.isNull():
-            # 如果资源文件不存在，使用系统图标
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'icons', 'clipboard.png')
+        if hasattr(sys, '_MEIPASS'):  # 如果是打包后的exe
+            icon_path = os.path.join(sys._MEIPASS, 'icons', 'clipboard.png')
+        
+        if os.path.exists(icon_path):
+            icon = QIcon(icon_path)
+        else:
             icon = self.style().standardIcon(QStyle.SP_DialogSaveButton)
         
         self.tray_icon.setIcon(icon)
@@ -321,6 +368,23 @@ class ClipboardManager(QWidget):
             self.drag_start_position = event.pos()
         QListWidget.mousePressEvent(self.list_widget, event)
 
+    def remove_item(self, text, row):
+        """统一处理删除项目的方法"""
+        try:
+            # 从列表控件中删除
+            if row >= 0 and row < self.list_widget.count():
+                self.list_widget.takeItem(row)
+            
+            # 从历史记录中删除
+            if text in self.clip_history:
+                self.clip_history.remove(text)
+                
+            print(f"Removed item: {text}")
+            print(f"Current history: {self.clip_history}")
+            print(f"List widget count: {self.list_widget.count()}")
+        except Exception as e:
+            print(f"Error removing item: {str(e)}")
+
     def list_mouseMoveEvent(self, event):
         try:
             if not (event.buttons() & Qt.LeftButton):
@@ -329,7 +393,6 @@ class ClipboardManager(QWidget):
             if not hasattr(self, 'drag_start_position'):
                 return
                 
-            # 检查是否达到拖动的最小距离
             if (event.pos() - self.drag_start_position).manhattanLength() < QApplication.startDragDistance():
                 return
 
@@ -338,34 +401,49 @@ class ClipboardManager(QWidget):
             if not item:
                 return
 
+            # 保存项目信息
+            text = item.text()
+            row = self.list_widget.row(item)
+
             # 创建拖拽对象
             drag = QDrag(self.list_widget)
             mimedata = QMimeData()
-            mimedata.setText(item.text())
+            mimedata.setText(text)
             drag.setMimeData(mimedata)
 
-            # 设置简单的拖拽预览图
-            pixmap = QPixmap(100, 30)  # 使用固定大小
+            # 设置拖拽预览图
+            pixmap = QPixmap(100, 30)
             pixmap.fill(Qt.transparent)
             painter = QPainter(pixmap)
             painter.setPen(Qt.white)
-            painter.drawText(pixmap.rect(), Qt.AlignCenter, item.text()[:20] + "...")
+            painter.drawText(pixmap.rect(), Qt.AlignCenter, text[:20] + "...")
             painter.end()
             drag.setPixmap(pixmap)
-            
-            # 设置热点为中心
             drag.setHotSpot(QPoint(pixmap.width() // 2, pixmap.height() // 2))
+
+            # 标记内部复制
+            self._internal_copy = True
             
-            # 开始拖拽
+            # 执行拖拽
             result = drag.exec_(Qt.CopyAction)
             
-            # 拖拽结束后，更新剪贴板
+            # 如果拖拽成功且启用了自动删除
             if result == Qt.CopyAction:
-                self.clipboard.setText(item.text())
-                # 显示复制成功提示
-                current_text = item.text()
-                item.setText("✓ 已复制")
-                QTimer.singleShot(500, lambda: item.setText(current_text))
+                self.clipboard.setText(text)
+                if self.auto_delete.isChecked():
+                    self.remove_item(text, row)
+                else:
+                    # 显示复制成功提示
+                    current_item = self.list_widget.item(row)
+                    if current_item:
+                        current_item.setText("✓ 已复制")
+                        QTimer.singleShot(500, lambda: current_item.setText(text))
+            
+            # 清理标记
+            if hasattr(self, '_internal_copy'):
+                delattr(self, '_internal_copy')
                 
         except Exception as e:
             print(f"Drag error: {str(e)}")
+            if hasattr(self, '_internal_copy'):
+                delattr(self, '_internal_copy')
