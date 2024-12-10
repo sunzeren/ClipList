@@ -399,11 +399,13 @@ class ClipboardManager(QWidget):
             # 获取当前项
             item = self.list_widget.itemAt(self.drag_start_position)
             if not item:
+                print("No item found at drag position")
                 return
 
             # 保存项目信息
             text = item.text()
             row = self.list_widget.row(item)
+            print(f"Starting drag: text={text}, row={row}")  # 调试信息
 
             # 创建拖拽对象
             drag = QDrag(self.list_widget)
@@ -429,9 +431,12 @@ class ClipboardManager(QWidget):
             
             # 如果拖拽成功且启用了自动删除
             if result == Qt.CopyAction:
+                print(f"Drag successful, auto_delete={self.auto_delete.isChecked()}")  # 调试信息
                 self.clipboard.setText(text)
+                
                 if self.auto_delete.isChecked():
-                    self.remove_item(text, row)
+                    # 确保在主线程中执行删除操作
+                    QTimer.singleShot(0, lambda: self.remove_item_safe(text, row))
                 else:
                     # 显示复制成功提示
                     current_item = self.list_widget.item(row)
@@ -447,3 +452,36 @@ class ClipboardManager(QWidget):
             print(f"Drag error: {str(e)}")
             if hasattr(self, '_internal_copy'):
                 delattr(self, '_internal_copy')
+
+    def remove_item_safe(self, text, row):
+        """安全地删除项目的方法"""
+        try:
+            print(f"Removing item: text={text}, row={row}")  # 调试信息
+            print(f"Before removal: list count={self.list_widget.count()}")
+            
+            # 验证行号是否有效
+            if row < 0 or row >= self.list_widget.count():
+                print(f"Invalid row number: {row}")
+                return
+                
+            # 验证文本是否匹配
+            current_item = self.list_widget.item(row)
+            if not current_item or current_item.text() != text:
+                print(f"Text mismatch or item not found at row {row}")
+                return
+            
+            # 从列表控件中删除
+            removed_item = self.list_widget.takeItem(row)
+            if removed_item:
+                print("Item removed from list widget")
+                # 从历史记录中删除
+                if text in self.clip_history:
+                    self.clip_history.remove(text)
+                    print("Item removed from history")
+                del removed_item
+            
+            print(f"After removal: list count={self.list_widget.count()}")
+            print(f"Current history: {self.clip_history}")
+            
+        except Exception as e:
+            print(f"Error in remove_item_safe: {str(e)}")
