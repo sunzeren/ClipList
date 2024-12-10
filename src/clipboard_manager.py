@@ -246,30 +246,9 @@ class ClipboardManager(QWidget):
         try:
             text = item.text()
             row = self.list_widget.row(item)
-            
-            # 标记这是内部复制操作
-            self._internal_copy = True
-            self.clipboard.setText(text)
-            # 删除标记
-            delattr(self, '_internal_copy')
-            
-            print(f"Content copied to clipboard: {text}")
-            
-            if self.auto_delete.isChecked():
-                removed_item = self.list_widget.takeItem(row)
-                if removed_item:
-                    if text in self.clip_history:
-                        self.clip_history.remove(text)
-                    del removed_item
-            else:
-                item.setText("✓ 已复制")
-                QApplication.processEvents()
-                QTimer.singleShot(500, lambda: item.setText(text))
-            
+            self.handle_paste(text, row)
         except Exception as e:
-            print(f"Error while copying: {str(e)}")
-            if hasattr(self, '_internal_copy'):
-                delattr(self, '_internal_copy')
+            print(f"Error in on_item_paste: {str(e)}")
 
     def clear_history(self):
         self.list_widget.clear()
@@ -371,17 +350,22 @@ class ClipboardManager(QWidget):
     def remove_item(self, text, row):
         """统一处理删除项目的方法"""
         try:
+            print(f"Removing item: text={text}, row={row}")
+            print(f"Before removal: list count={self.list_widget.count()}")
+            
             # 从列表控件中删除
             if row >= 0 and row < self.list_widget.count():
-                self.list_widget.takeItem(row)
+                removed_item = self.list_widget.takeItem(row)
+                if removed_item:
+                    # 从历史记录中删除
+                    if text in self.clip_history:
+                        self.clip_history.remove(text)
+                    del removed_item
+                    print(f"Successfully removed item at row {row}")
             
-            # 从历史记录中删除
-            if text in self.clip_history:
-                self.clip_history.remove(text)
-                
-            print(f"Removed item: {text}")
+            print(f"After removal: list count={self.list_widget.count()}")
             print(f"Current history: {self.clip_history}")
-            print(f"List widget count: {self.list_widget.count()}")
+            
         except Exception as e:
             print(f"Error removing item: {str(e)}")
 
@@ -405,7 +389,7 @@ class ClipboardManager(QWidget):
             # 保存项目信息
             text = item.text()
             row = self.list_widget.row(item)
-            print(f"Starting drag: text={text}, row={row}")  # 调试信息
+            print(f"Starting drag: text={text}, row={row}")
 
             # 创建拖拽对象
             drag = QDrag(self.list_widget)
@@ -423,65 +407,48 @@ class ClipboardManager(QWidget):
             drag.setPixmap(pixmap)
             drag.setHotSpot(QPoint(pixmap.width() // 2, pixmap.height() // 2))
 
-            # 标记内部复制
-            self._internal_copy = True
-            
             # 执行拖拽
             result = drag.exec_(Qt.CopyAction)
             
-            # 如果拖拽成功且启用了自动删除
+            # 如果拖拽成功
             if result == Qt.CopyAction:
-                print(f"Drag successful, auto_delete={self.auto_delete.isChecked()}")  # 调试信息
+                # 设置剪贴板
+                self._internal_copy = True
                 self.clipboard.setText(text)
-                
-                if self.auto_delete.isChecked():
-                    # 确保在主线程中执行删除操作
-                    QTimer.singleShot(0, lambda: self.remove_item_safe(text, row))
-                else:
-                    # 显示复制成功提示
-                    current_item = self.list_widget.item(row)
-                    if current_item:
-                        current_item.setText("✓ 已复制")
-                        QTimer.singleShot(500, lambda: current_item.setText(text))
-            
-            # 清理标记
-            if hasattr(self, '_internal_copy'):
                 delattr(self, '_internal_copy')
+                
+                print(f"Content copied to clipboard: {text}")
+                
+                # 如果启用了自动删除，删除该项
+                if self.auto_delete.isChecked():
+                    QTimer.singleShot(0, lambda: self.remove_item(text, row))
                 
         except Exception as e:
             print(f"Drag error: {str(e)}")
             if hasattr(self, '_internal_copy'):
                 delattr(self, '_internal_copy')
 
-    def remove_item_safe(self, text, row):
-        """安全地删除项目的方法"""
+    def handle_paste(self, text, row):
+        """统一处理粘贴操作"""
         try:
-            print(f"Removing item: text={text}, row={row}")  # 调试信息
-            print(f"Before removal: list count={self.list_widget.count()}")
+            # 设置剪贴板
+            self._internal_copy = True
+            self.clipboard.setText(text)
+            delattr(self, '_internal_copy')
             
-            # 验证行号是否有效
-            if row < 0 or row >= self.list_widget.count():
-                print(f"Invalid row number: {row}")
-                return
-                
-            # 验证文本是否匹配
-            current_item = self.list_widget.item(row)
-            if not current_item or current_item.text() != text:
-                print(f"Text mismatch or item not found at row {row}")
-                return
+            print(f"Content copied to clipboard: {text}")
             
-            # 从列表控件中删除
-            removed_item = self.list_widget.takeItem(row)
-            if removed_item:
-                print("Item removed from list widget")
-                # 从历史记录中删除
-                if text in self.clip_history:
-                    self.clip_history.remove(text)
-                    print("Item removed from history")
-                del removed_item
-            
-            print(f"After removal: list count={self.list_widget.count()}")
-            print(f"Current history: {self.clip_history}")
-            
+            # 如果启用了自动删除，删除该项
+            if self.auto_delete.isChecked():
+                self.remove_item(text, row)
+            else:
+                # 显示复制成功提示
+                current_item = self.list_widget.item(row)
+                if current_item:
+                    current_item.setText("✓ 已复制")
+                    QTimer.singleShot(500, lambda: current_item.setText(text))
+                    
         except Exception as e:
-            print(f"Error in remove_item_safe: {str(e)}")
+            print(f"Error in handle_paste: {str(e)}")
+            if hasattr(self, '_internal_copy'):
+                delattr(self, '_internal_copy')
