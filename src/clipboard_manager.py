@@ -1,8 +1,10 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
-                           QListWidget, QLabel, QPushButton, QApplication,
+                           QListWidget, QListWidgetItem, QLabel, 
+                           QPushButton, QApplication,
                            QSystemTrayIcon, QMenu, QAction, QCheckBox)
-from PyQt5.QtCore import Qt, QPoint, QMimeData, QTimer
-from PyQt5.QtGui import QFont, QIcon, QDrag, QPainter, QPixmap
+from PyQt5.QtCore import Qt, QPoint, QMimeData, QTimer, QSize
+from PyQt5.QtGui import (QFont, QIcon, QDrag, QPainter, QPixmap,
+                        QColor)
 import win32gui
 import win32api
 import win32con
@@ -235,8 +237,8 @@ class ClipboardManager(QWidget):
         text = self.clipboard.text().strip()
         # 只有当文本不在历史记录中，且不是我们自己触发的复制操作时才添加
         if text and text not in self.clip_history and not hasattr(self, '_internal_copy'):
-            self.clip_history.append(text)
-            self.list_widget.insertItem(0, text)
+            self.clip_history.insert(0, text)  # 在开头插入新项目
+            self.update_list()  # 使用新的更新方法替代直接插入
 
     def on_item_hover(self, item):
         # 当鼠标悬停时，只选中项目但不触发粘贴
@@ -362,6 +364,9 @@ class ClipboardManager(QWidget):
                         self.clip_history.remove(text)
                     del removed_item
                     print(f"Successfully removed item at row {row}")
+                    
+                    # 删除后更新列表以重新编号
+                    self.update_list()
             
             print(f"After removal: list count={self.list_widget.count()}")
             print(f"Current history: {self.clip_history}")
@@ -369,86 +374,113 @@ class ClipboardManager(QWidget):
         except Exception as e:
             print(f"Error removing item: {str(e)}")
 
+    def create_list_item(self, text, index):
+        item = QListWidgetItem()
+        
+        # 存储原始文本
+        item.setData(Qt.UserRole, text)
+        
+        # 设置显示文本
+        item.setText(f"[{index}] · {text}")
+        
+        # 设置字体
+        font = QFont("Arial", 9)
+        item.setFont(font)
+        
+        # 设置编号的颜色（浅蓝色）
+        brush = item.foreground()
+        brush.setColor(QColor("#7fb3d5"))
+        item.setForeground(brush)
+        
+        # 设置项目的样式
+        item.setSizeHint(QSize(self.list_widget.width() - 20, 32))
+        
+        return item
+
+    def update_list(self):
+        self.list_widget.clear()
+        for index, text in enumerate(self.clip_history, 1):
+            item = self.create_list_item(text, index)
+            self.list_widget.addItem(item)
+
     def list_mouseMoveEvent(self, event):
         try:
             if not (event.buttons() & Qt.LeftButton):
                 return
-                
+            
             if not hasattr(self, 'drag_start_position'):
                 return
-                
+            
             if (event.pos() - self.drag_start_position).manhattanLength() < QApplication.startDragDistance():
                 return
 
             # 获取当前项
-            item = self.list_widget.itemAt(self.drag_start_position)
-            if not item:
-                print("No item found at drag position")
+            current_item = self.list_widget.itemAt(self.drag_start_position)
+            if not current_item:
                 return
 
-            # 保存项目信息
-            text = item.text()
-            row = self.list_widget.row(item)
-            print(f"Starting drag: text={text}, row={row}")
-
+            # 获取原始文本（不含编号）
+            text = current_item.data(Qt.UserRole)
+            
             # 创建拖拽对象
             drag = QDrag(self.list_widget)
             mimedata = QMimeData()
             mimedata.setText(text)
             drag.setMimeData(mimedata)
 
-            # 设置拖拽预览图
-            pixmap = QPixmap(100, 30)
-            pixmap.fill(Qt.transparent)
-            painter = QPainter(pixmap)
-            painter.setPen(Qt.white)
-            painter.drawText(pixmap.rect(), Qt.AlignCenter, text[:20] + "...")
-            painter.end()
-            drag.setPixmap(pixmap)
-            drag.setHotSpot(QPoint(pixmap.width() // 2, pixmap.height() // 2))
-
             # 执行拖拽
             result = drag.exec_(Qt.CopyAction)
             
             # 如果拖拽成功
             if result == Qt.CopyAction:
+                row = self.list_widget.row(current_item)
                 # 设置剪贴板
                 self._internal_copy = True
                 self.clipboard.setText(text)
-                delattr(self, '_internal_copy')
                 
-                print(f"Content copied to clipboard: {text}")
-                
-                # 如果启用了自动删除，删除该项
+                # 如��启用了自动删除，删除该项
                 if self.auto_delete.isChecked():
                     QTimer.singleShot(0, lambda: self.remove_item(text, row))
-                
+            
         except Exception as e:
             print(f"Drag error: {str(e)}")
+        finally:
             if hasattr(self, '_internal_copy'):
                 delattr(self, '_internal_copy')
 
     def handle_paste(self, text, row):
         """统一处理粘贴操作"""
         try:
+            # 获取原始文本（不含编号）
+            original_text = self.list_widget.item(row).data(Qt.UserRole)
+            
             # 设置剪贴板
             self._internal_copy = True
-            self.clipboard.setText(text)
-            delattr(self, '_internal_copy')
-            
-            print(f"Content copied to clipboard: {text}")
+            self.clipboard.setText(original_text)
             
             # 如果启用了自动删除，删除该项
             if self.auto_delete.isChecked():
-                self.remove_item(text, row)
+                self.remove_item(original_text, row)  # remove_item 现在会自动更新列表
             else:
                 # 显示复制成功提示
                 current_item = self.list_widget.item(row)
                 if current_item:
+                    # 使用相同的字体显示复制成功提示
+                    font = QFont("Arial", 9)  # 使用相同的字体大小
+                    current_item.setFont(font)
                     current_item.setText("✓ 已复制")
-                    QTimer.singleShot(500, lambda: current_item.setText(text))
-                    
+                    QTimer.singleShot(500, lambda: self.update_list())
+                
         except Exception as e:
             print(f"Error in handle_paste: {str(e)}")
+        finally:
             if hasattr(self, '_internal_copy'):
                 delattr(self, '_internal_copy')
+
+    def copy_selected_text(self):
+        current_item = self.list_widget.currentItem()
+        if current_item:
+            label = self.list_widget.itemWidget(current_item)
+            # 获取原始文本（不包含编号）
+            text = self.clip_history[self.list_widget.row(current_item)]
+            self.clipboard.setText(text)
