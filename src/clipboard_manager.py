@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                            QListWidget, QListWidgetItem, QLabel, 
                            QPushButton, QApplication,
                            QSystemTrayIcon, QMenu, QAction, QCheckBox)
-from PyQt5.QtCore import Qt, QPoint, QMimeData, QTimer, QSize
+from PyQt5.QtCore import Qt, QPoint, QMimeData, QTimer, QSize, QMetaObject, Q_ARG, pyqtSlot
 from PyQt5.QtGui import (QFont, QIcon, QDrag, QPainter, QPixmap,
                         QColor)
 import win32gui
@@ -15,6 +15,7 @@ from ctypes import windll
 import keyboard
 import os
 import sys
+from functools import partial
 
 class ClipboardManager(QWidget):
     def __init__(self):
@@ -42,6 +43,9 @@ class ClipboardManager(QWidget):
         
         # 添加系统托盘
         self.setup_tray()
+        
+        # 添加快捷键监听
+        self.setup_shortcuts()
 
     def init_ui(self):
         self.setFixedSize(400, 600)
@@ -320,8 +324,9 @@ class ClipboardManager(QWidget):
             self.toggle_window()
     
     def closeEvent(self, event):
-        # 移除托盘最小化的行为，直接接受关闭事件
-        event.accept()  # 这将导致应用程序关闭
+        # 在关闭程序前取消注册快捷键
+        keyboard.unhook_all()
+        event.accept()
 
     def toggle_always_on_top(self, checked):
         self.always_on_top = checked
@@ -438,7 +443,7 @@ class ClipboardManager(QWidget):
                 self._internal_copy = True
                 self.clipboard.setText(text)
                 
-                # 如��启用了自动删除，删除该项
+                # 如果启用了自动删除，删除该项
                 if self.auto_delete.isChecked():
                     QTimer.singleShot(0, lambda: self.remove_item(text, row))
             
@@ -458,7 +463,7 @@ class ClipboardManager(QWidget):
             self._internal_copy = True
             self.clipboard.setText(original_text)
             
-            # 如果启用了自动删除，删除该项
+            # 如果用了自动删除，删除该项
             if self.auto_delete.isChecked():
                 self.remove_item(original_text, row)  # remove_item 现在会自动更新列表
             else:
@@ -484,3 +489,73 @@ class ClipboardManager(QWidget):
             # 获取原始文本（不包含编号）
             text = self.clip_history[self.list_widget.row(current_item)]
             self.clipboard.setText(text)
+
+    def setup_shortcuts(self):
+        """设置快捷键"""
+        # 为数字 1-9 设置快捷键
+        for i in range(1, 10):
+            keyboard.add_hotkey(f'alt+{i}', self.handle_number_shortcut, args=(i,))
+
+    def handle_number_shortcut(self, number):
+        """处理数字快捷键"""
+        try:
+            # 因为列表索引从0开始，而显示的编号从1开始，所以这里需要减1
+            index = number - 1
+            if index < len(self.clip_history):
+                text = self.clip_history[index]
+                print(f"\n=== 剪贴板项目 [{number}] ===")
+                print(text)
+                print("=" * 30)
+                
+                try:
+                    # 使用 win32clipboard 来设置剪贴板
+                    win32clipboard.OpenClipboard()
+                    win32clipboard.EmptyClipboard()
+                    win32clipboard.SetClipboardText(text)
+                    win32clipboard.CloseClipboard()
+                    
+                    # 模拟粘贴操作
+                    def wait_for_keys_release():
+                        # 等待 alt 和数字键释放
+                        while any(keyboard.is_pressed(key) for key in ['alt'] + [str(i) for i in range(10)]):
+                            time.sleep(0.05)
+                    
+                    # 等待按键释放后执行粘贴
+                    wait_for_keys_release()
+                    keyboard.send('ctrl+v')
+                    
+                    # 如果启用了自动删除，删除该项
+                    if self.auto_delete.isChecked():
+                        # 使用 QMetaObject.invokeMethod 在主线程中执行删除操作
+                        QMetaObject.invokeMethod(self, "delayed_remove_item",
+                                               Qt.QueuedConnection,
+                                               Q_ARG(str, text),
+                                               Q_ARG(int, index))
+                finally:
+                    # 确保剪贴板被关闭
+                    try:
+                        win32clipboard.CloseClipboard()
+                    except:
+                        pass
+            else:
+                print(f"没有找到编号为 {number} 的剪贴板项目")
+        except Exception as e:
+            print(f"处理快捷键时出错: {str(e)}")
+
+    # 添加一个新的槽函数来处理延迟删除
+    @pyqtSlot(str, int)
+    def delayed_remove_item(self, text, index):
+        """在主线程中安全地删除项目"""
+        self.remove_item(text, index)
+
+    def get_item_by_number(self, number):
+        """根据编号获取剪贴板项目"""
+        try:
+            # 编号从1开始，所以需要减1来获取正确的索引
+            index = number - 1
+            if 0 <= index < len(self.clip_history):
+                return self.clip_history[index]
+            return None
+        except Exception as e:
+            print(f"获取剪贴板项目时出错: {str(e)}")
+            return None
