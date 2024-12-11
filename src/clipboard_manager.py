@@ -20,6 +20,11 @@ from functools import partial
 class ClipboardManager(QWidget):
     def __init__(self):
         super().__init__()
+        # 添加图标路径
+        self.icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'icons')
+        if hasattr(sys, '_MEIPASS'):  # 如果是打包后的exe
+            self.icon_path = os.path.join(sys._MEIPASS, 'icons')
+        
         # 设置窗口标志：无边框、置顶、不获取焦点
         self.setWindowFlags(
             Qt.Window |  # 基本窗口
@@ -73,19 +78,34 @@ class ClipboardManager(QWidget):
         title.setObjectName('titleLabel')
         title.setFont(QFont('Arial', 12, QFont.Bold))
         
-        # 添加"使用后删除"复选框
+        # 修改自动删除复选框的样式和图标
         self.auto_delete = QCheckBox('使用后删除')
         self.auto_delete.setObjectName('autoDeleteCheckBox')
-        self.auto_delete.setChecked(True)  # 默认选中
-        
-        # 置顶按钮
-        pin_btn = QPushButton('📌')  # 使用 Unicode 图标
+        self.auto_delete.setChecked(True)
+        self.auto_delete.setFixedWidth(90)
+
+        # 添加最小化按钮
+        min_btn = QPushButton('─')
+        min_btn.setObjectName('minButton')
+        min_btn.setFixedSize(30, 30)
+        min_btn.clicked.connect(self.showMinimized)
+
+        # 修改置顶按钮样式
+        pin_btn = QPushButton()
         pin_btn.setObjectName('pinButton')
         pin_btn.setFixedSize(30, 30)
         pin_btn.setCheckable(True)
         pin_btn.setChecked(True)
-        pin_btn.clicked.connect(self.toggle_always_on_top)
         
+        # 设置初始图标
+        top_icon = QIcon(os.path.join(self.icon_path, 'top.png'))
+        untop_icon = QIcon(os.path.join(self.icon_path, 'untop.png'))
+        pin_btn.setIcon(top_icon)
+        pin_btn.setIconSize(QSize(20, 20))  # 设置图标大小
+        
+        # 连接信号并传递图标
+        pin_btn.clicked.connect(lambda checked: self.toggle_always_on_top(checked, pin_btn, top_icon, untop_icon))
+
         # 关闭按钮
         close_btn = QPushButton('×')
         close_btn.setObjectName('closeButton')
@@ -94,8 +114,9 @@ class ClipboardManager(QWidget):
         
         title_layout.addWidget(title)
         title_layout.addStretch()
-        title_layout.addWidget(self.auto_delete)  # 添加到标题栏
+        title_layout.addWidget(self.auto_delete)
         title_layout.addWidget(pin_btn)
+        title_layout.addWidget(min_btn)
         title_layout.addWidget(close_btn)
         
         # 列表区域
@@ -148,15 +169,21 @@ class ClipboardManager(QWidget):
             }
             #pinButton {
                 background-color: transparent;
+                border: none;
+                padding: 5px;
+            }
+            #pinButton:hover {
+                background-color: rgba(52, 73, 94, 0.5);
+            }
+            #minButton {
+                background-color: transparent;
                 color: #ecf0f1;
                 border: none;
                 font-size: 16px;
+                font-weight: bold;
             }
-            #pinButton:checked {
-                color: #3498db;
-            }
-            #pinButton:hover {
-                background-color: #34495e;
+            #minButton:hover {
+                background-color: rgba(52, 73, 94, 0.5);
             }
             #closeButton {
                 background-color: transparent;
@@ -202,27 +229,30 @@ class ClipboardManager(QWidget):
             }
             #autoDeleteCheckBox {
                 color: #ecf0f1;
-                spacing: 5px;
+                spacing: 2px;
+                padding: 1px 2px;
             }
             
             #autoDeleteCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border-radius: 3px;
-                border: 1px solid #7f8c8d;
-            }
-            
-            #autoDeleteCheckBox::indicator:unchecked {
+                width: 25px;
+                height: 25px;
+                border: none;
                 background-color: transparent;
+                image: url(icons/checkbox.png);
             }
             
             #autoDeleteCheckBox::indicator:checked {
-                background-color: #3498db;
-                border: 1px solid #2980b9;
+                image: url(icons/checkbox-checked.png);
+                background-color: transparent;
+                border: none;
             }
             
             #autoDeleteCheckBox::indicator:hover {
-                border: 1px solid #3498db;
+                opacity: 0.8;
+            }
+            
+            #autoDeleteCheckBox:hover {
+                color: #3498db;
             }
         ''')
 
@@ -328,7 +358,8 @@ class ClipboardManager(QWidget):
         keyboard.unhook_all()
         event.accept()
 
-    def toggle_always_on_top(self, checked):
+    def toggle_always_on_top(self, checked, btn, top_icon, untop_icon):
+        """切换窗口置顶状态"""
         self.always_on_top = checked
         # 保存当前位置
         current_pos = self.pos()
@@ -337,8 +368,10 @@ class ClipboardManager(QWidget):
         flags = self.windowFlags()
         if checked:
             flags |= Qt.WindowStaysOnTopHint
+            btn.setIcon(top_icon)
         else:
             flags &= ~Qt.WindowStaysOnTopHint
+            btn.setIcon(untop_icon)
             
         # 在更改标志之前隐藏窗口
         self.hide()
@@ -347,7 +380,6 @@ class ClipboardManager(QWidget):
         # 恢复位置并显示
         self.move(current_pos)
         self.show()
-        self.activateWindow()  # 确保窗口获得焦点
 
     def list_mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:

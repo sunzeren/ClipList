@@ -1,6 +1,7 @@
 import sys
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtGui import QCursor
+from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QSystemTrayIcon
+from PyQt5.QtGui import QCursor, QIcon
+from PyQt5.QtCore import Qt
 from clipboard_manager import ClipboardManager
 
 def main():
