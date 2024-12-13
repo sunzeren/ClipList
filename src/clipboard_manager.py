@@ -152,108 +152,111 @@ class ClipboardManager(QWidget):
         layout.addWidget(container)
         self.setLayout(layout)
         
-        # 设置样式
-        self.setStyleSheet('''
-            #container {
+        # 构建复选框图标的完整路径
+        checkbox_path = os.path.join(self.icon_path, 'checkbox.png').replace('\\', '/')
+        checkbox_checked_path = os.path.join(self.icon_path, 'checkbox-checked.png').replace('\\', '/')
+        
+        self.setStyleSheet(f'''
+            #container {{
                 background-color: #2c3e50;
                 border-radius: 10px;
                 border: 1px solid #34495e;
-            }
-            #titleBar {
+            }}
+            #titleBar {{
                 background-color: #34495e;
                 border-top-left-radius: 10px;
                 border-top-right-radius: 10px;
-            }
-            #titleLabel {
+            }}
+            #titleLabel {{
                 color: #ecf0f1;
-            }
-            #pinButton {
+            }}
+            #pinButton {{
                 background-color: transparent;
                 border: none;
                 padding: 5px;
-            }
-            #pinButton:hover {
+            }}
+            #pinButton:hover {{
                 background-color: rgba(52, 73, 94, 0.5);
-            }
-            #minButton {
+            }}
+            #minButton {{
                 background-color: transparent;
                 color: #ecf0f1;
                 border: none;
                 font-size: 16px;
                 font-weight: bold;
-            }
-            #minButton:hover {
+            }}
+            #minButton:hover {{
                 background-color: rgba(52, 73, 94, 0.5);
-            }
-            #closeButton {
+            }}
+            #closeButton {{
                 background-color: transparent;
                 color: #ecf0f1;
                 border: none;
                 font-size: 20px;
-            }
-            #closeButton:hover {
+            }}
+            #closeButton:hover {{
                 background-color: #e74c3c;
-            }
-            QListWidget {
+            }}
+            QListWidget {{
                 background-color: #2c3e50;
                 border: none;
                 color: #ecf0f1;
                 padding: 5px;
-            }
-            QListWidget::item {
+            }}
+            QListWidget::item {{
                 background-color: #34495e;
                 border-radius: 5px;
                 margin: 2px 5px;
                 padding: 8px;
-            }
-            QListWidget::item:hover {
+            }}
+            QListWidget::item:hover {{
                 background-color: #3498db;
-            }
-            QListWidget::item:selected {
+            }}
+            QListWidget::item:selected {{
                 background-color: #2980b9;
-            }
-            #clearButton {
+            }}
+            #clearButton {{
                 background-color: #3498db;
                 color: white;
                 border: none;
                 padding: 8px 15px;
                 border-radius: 5px;
-            }
-            #clearButton:hover {
+            }}
+            #clearButton:hover {{
                 background-color: #2980b9;
-            }
-            #bottomBar {
+            }}
+            #bottomBar {{
                 background-color: #2c3e50;
                 border-bottom-left-radius: 10px;
                 border-bottom-right-radius: 10px;
-            }
-            #autoDeleteCheckBox {
+            }}
+            #autoDeleteCheckBox {{
                 color: #ecf0f1;
                 spacing: 2px;
                 padding: 1px 2px;
-            }
+            }}
             
-            #autoDeleteCheckBox::indicator {
+            #autoDeleteCheckBox::indicator {{
                 width: 25px;
                 height: 25px;
                 border: none;
                 background-color: transparent;
-                image: url(icons/checkbox.png);
-            }
+                image: url({checkbox_path});
+            }}
             
-            #autoDeleteCheckBox::indicator:checked {
-                image: url(icons/checkbox-checked.png);
+            #autoDeleteCheckBox::indicator:checked {{
+                image: url({checkbox_checked_path});
                 background-color: transparent;
                 border: none;
-            }
+            }}
             
-            #autoDeleteCheckBox::indicator:hover {
+            #autoDeleteCheckBox::indicator:hover {{
                 opacity: 0.8;
-            }
+            }}
             
-            #autoDeleteCheckBox:hover {
+            #autoDeleteCheckBox:hover {{
                 color: #3498db;
-            }
+            }}
         ''')
 
     def setup_clipboard(self):

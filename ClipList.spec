@@ -5,12 +5,12 @@ a = Analysis(
     ['src\\main.py'],
     pathex=[],
     binaries=[],
-    datas=[('icons/clipboard.png', 'icons')],
-    hiddenimports=['win32api', 'win32gui', 'win32con', 'keyboard'],
+    datas=[('icons/clipboard.png', 'icons'), ('icons/checkbox.png', 'icons'), ('icons/checkbox-checked.png', 'icons'), ('icons/top.png', 'icons'), ('icons/untop.png', 'icons')],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['unittest', 'email', 'html', 'http', 'xml', 'PyQt5.QtNetwork', 'PyQt5.QtQml', 'PyQt5.QtWebKit', 'PyQt5.QtMultimedia'],
+    excludes=[],
     noarchive=False,
     optimize=0,
 )
@@ -35,6 +35,4 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    version='version.txt',
-    icon=['icons\\clipboard.png'],
 )
